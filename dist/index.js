@@ -90373,37 +90373,22 @@ async function getRunners(label,isDeleteFlow) {
   try {
     const runners = await octokit.paginate('GET /repos/{owner}/{repo}/actions/runners', config.githubContext);
 
-      if(!isDeleteFlow) {
-        core.info(`got the labels ${JSON.stringify(label)}`);
-        core.info(`Runners is ${JSON.stringify(runners)}`);
-        if (runners.length === undefined) {
-          core.info(`Runners is ${JSON.stringify(runners)}`)
-        } else {
-          const runnersLength = runners.length;
-          core.info(`Total Runners and Runners Length ${runnersLength}`);
-        }
+      if (!isDeleteFlow) {
+        // core.info(`[DEBUG] Finding runners with label: ${label}`);
         const foundRunners = runners.filter(runner => runner.labels.some(labelObj => labelObj.name === label));
-        core.info(`Found runners ${JSON.stringify(foundRunners)}`);
-        return foundRunners.length > 0 ? foundRunners : null;
+        // core.info(`[DEBUG] Found ${foundRunners.length} runners for label ${label}`);
+        return foundRunners;
 
-      }else{
-        core.info(`got the labels ${JSON.stringify(label)}`);
-        core.info(`Runners is ${JSON.stringify(runners)}`);
-        if (runners.length === undefined) {
-          core.info(`Runners is ${JSON.stringify(runners)}`)
-        } else {
-          const runnersLength = runners.length;
-          core.info(`Total Runners and Runners Length ${runnersLength}`);
-        }
-        const labels= JSON.parse(label);
+      } else {
+        // core.info(`[DEBUG] Finding runners with labels: ${label} (Delete Flow)`);
+        const labels = JSON.parse(label); // Assuming label is a JSON string array in delete flow
         const foundRunners = runners.filter(runner => runner.labels.some(labelObj => labels.includes(labelObj.name)));
-        core.info(`Found runners ${JSON.stringify(foundRunners)}`);
-        return foundRunners.length > 0 ? foundRunners : null;
-
+        // core.info(`[DEBUG] Found ${foundRunners.length} runners for delete flow`);
+        return foundRunners;
       }
   } catch (error) {
-    core.error('GitHub self-hosted runner receiving error',error);
-    return null;
+    core.error(`GitHub self-hosted runner receiving error: ${error.message}`);
+    return [];
   }
 
 }
@@ -90450,27 +90435,35 @@ async function removeRunner() {
 
 }
 async function waitForRunnerRegistered(label, timeoutMinutes, retryIntervalSeconds) {
-  let waitSeconds = 0;
-  return new Promise((resolve, reject) => {
-    const interval = setInterval(async () => {
-      const runners = await getRunners(label,false);
-      core.info(`[DEBUG_ROHAN] RUNNER CONFIG ${JSON.stringify(runners)}`);
-      if (waitSeconds > timeoutMinutes * 60) {
-        core.error(`GitHub self-hosted runner registration error for label ${label}`);
-        clearInterval(interval);
-        reject(`A timeout of ${timeoutMinutes} minutes is exceeded. Your AWS EC2 instance with label ${label} was not able to register itself in GitHub as a new self-hosted runner.`);
-      }
+  const maxSeconds = timeoutMinutes * 60;
+  let elapsedSeconds = 0;
 
-      if (runners && runners.every((runner => runner.status === 'online'))) {
-        core.info(`GitHub self-hosted runners for label ${label} are registered and ready to use`);
-        clearInterval(interval);
-        resolve();
+  while (elapsedSeconds < maxSeconds) {
+    try {
+      const runners = await getRunners(label, false);
+      core.info(`[DEBUG] Received runners for label ${label}: ${JSON.stringify(runners || [])}`);
+
+      if (runners && runners.length > 0) {
+        const allOnline = runners.every(runner => runner.status === 'online');
+        if (allOnline) {
+          core.info(`GitHub self-hosted runner(s) for label ${label} are registered and ready to use.`);
+          return;
+        } else {
+          const statuses = runners.map(r => `${r.name}:${r.status}`).join(', ');
+          core.info(`Found ${runners.length} runner(s) for label ${label}, but not all are online. Statuses: [${statuses}]. Waiting...`);
+        }
       } else {
-        waitSeconds += retryIntervalSeconds;
-        core.info(`Checking for label ${label}...`);
+        core.info(`No runners found for label ${label} yet. Waiting...`);
       }
-    }, retryIntervalSeconds * 1000);
-  });
+    } catch (error) {
+      core.error(`Error checking runner status for ${label}: ${error.message}`);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, retryIntervalSeconds * 1000));
+    elapsedSeconds += retryIntervalSeconds;
+  }
+
+  throw new Error(`A timeout of ${timeoutMinutes} minutes is exceeded. Your AWS EC2 instance with label ${label} was not able to register itself in GitHub as a new self-hosted runner.`);
 }
 async function waitForRunnersRegistered(labels) {
   const timeoutMinutes = 5;
