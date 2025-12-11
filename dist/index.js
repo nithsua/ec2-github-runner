@@ -90116,7 +90116,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
     core.info(`Single-instance mode enabled → launching 1 EC2 instance with ${maxConfigRunners} runners.`);
 
     // generate a BASE label for the whole instance
-    const baseLabel = config.generateRandomString(12);
+    const baseLabel = config.generateRandomString(60);
     core.info(`[DEBUG] Generated baseLabel: ${baseLabel}`);
 
     // build multi-runner user-data
