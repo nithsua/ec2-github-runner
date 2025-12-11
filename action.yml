@@ -79,6 +79,11 @@ inputs:
       ECS instance count, defaults to 1
     required: false
     default: '1'
+  single-instance:
+    description: >-
+      If true, a single EC2 instance will be launched with multiple runners. If false, each runner will be launched on a separate EC2 instance.
+    required: false
+    default: 'false'
   runner-home-dir:
     description: >-
       Directory that contains actions-runner software and scripts. E.g. /home/runner/actions-runner.
