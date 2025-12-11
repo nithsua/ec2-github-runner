@@ -166,7 +166,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
   const labels = [];
 
   const ec2 = new AWS.EC2();
-  const runnersPerInstance = parseInt(config.input.runnersPerInstance || '' , 10);
+  const runnersPerInstance = parseInt(config.input.runnersPerInstance || '' , 1);
 
   // CASE 1: single EC2 instance that hosts multiple runners
   if (singleInstance) {
