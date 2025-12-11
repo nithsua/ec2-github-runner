@@ -4,6 +4,56 @@ const config = require('./config');
 const { info } = require('@actions/core');
 
 // User data scripts are run as the root user
+function getCloudWatchSetupScript() {
+  return [
+    '# Install CloudWatch Agent for Ubuntu',
+    'wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb',
+    'sudo dpkg -i amazon-cloudwatch-agent.deb',
+    'rm amazon-cloudwatch-agent.deb',
+    '',
+    '# Create CloudWatch Agent config',
+    'sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc',
+    "sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json > /dev/null << 'EOF'",
+    '{',
+    '  "agent": {',
+    '    "metrics_collection_interval": 60,',
+    '    "run_as_user": "root"',
+    '  },',
+    '  "metrics": {',
+    '    "namespace": "GithubActions/Runners",',
+    '    "append_dimensions": {',
+    '      "InstanceId": "${aws:InstanceId}"',
+    '    },',
+    '    "metrics_collected": {',
+    '      "mem": {',
+    '        "measurement": ["mem_used_percent", "mem_available", "mem_total", "mem_used"],',
+    '        "metrics_collection_interval": 60',
+    '      },',
+    '      "swap": {',
+    '        "measurement": ["swap_used_percent", "swap_used", "swap_free"],',
+    '        "metrics_collection_interval": 60',
+    '      },',
+    '      "disk": {',
+    '        "measurement": ["disk_used_percent", "disk_free", "disk_used"],',
+    '        "resources": ["/"],',
+    '        "metrics_collection_interval": 60',
+    '      },',
+    '      "cpu": {',
+    '        "measurement": ["cpu_usage_idle", "cpu_usage_user", "cpu_usage_system"],',
+    '        "metrics_collection_interval": 60,',
+    '        "totalcpu": true',
+    '      }',
+    '    }',
+    '  }',
+    '}',
+    'EOF',
+    '',
+    '# Start CloudWatch Agent',
+    'sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s',
+    ''
+  ];
+}
+
 function buildUserDataScript(githubRegistrationToken, label) {
   core.info("build script for label "+label);
   if (config.input.runnerHomeDir) {
@@ -12,6 +62,9 @@ function buildUserDataScript(githubRegistrationToken, label) {
     core.info("Have found the runner in AMI so init docker runner ");
     return [
       '#!/bin/bash',
+      'sudo systemctl stop unattended-upgrades',
+      'sudo systemctl disable unattended-upgrades',
+      ...getCloudWatchSetupScript(),
       `cd "${config.input.runnerHomeDir}"`,
       `echo "${config.input.preRunnerScript}" > pre-runner-script.sh`,
       'source pre-runner-script.sh',
@@ -23,6 +76,9 @@ function buildUserDataScript(githubRegistrationToken, label) {
     core.info("Haven't found the runner so installing it ");
     return [
       '#!/bin/bash',
+      'sudo systemctl stop unattended-upgrades',
+      'sudo systemctl disable unattended-upgrades',
+      ...getCloudWatchSetupScript(),
       'mkdir actions-runner && cd actions-runner',
       `echo "${config.input.preRunnerScript}" > pre-runner-script.sh`,
       'source pre-runner-script.sh',
@@ -50,6 +106,9 @@ function buildUserDataScript_multiRunner(githubRegistrationToken, baseLabel, run
     return [
       '#!/bin/bash',
       'set -euxo pipefail',
+      'sudo systemctl stop unattended-upgrades',
+      'sudo systemctl disable unattended-upgrades',
+      ...getCloudWatchSetupScript(),
       `cd "${config.input.runnerHomeDir}"`,
       `echo "${config.input.preRunnerScript}" > /tmp/pre-runner-script.sh`,
       'source /tmp/pre-runner-script.sh',
@@ -76,6 +135,9 @@ function buildUserDataScript_multiRunner(githubRegistrationToken, baseLabel, run
   return [
     '#!/bin/bash',
     'set -euxo pipefail',
+    'sudo systemctl stop unattended-upgrades',
+    'sudo systemctl disable unattended-upgrades',
+    ...getCloudWatchSetupScript(),
     'cd /opt',
     `echo "${config.input.preRunnerScript}" > /tmp/pre-runner-script.sh`,
     'source /tmp/pre-runner-script.sh',
