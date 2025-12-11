@@ -18,6 +18,7 @@ class Config {
       iamRoleName: core.getInput('iam-role-name'),
       runnerHomeDir: core.getInput('runner-home-dir'),
       preRunnerScript: core.getInput('pre-runner-script'),
+      singleInstance: core.getInput('single-instance') === 'true',
       runnerCount: parseInt(core.getInput('runner-count')),
       marketType: core.getInput('market-type'),
     };

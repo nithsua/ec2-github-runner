@@ -27,7 +27,8 @@ async function stop() {
   await aws.terminateEc2Instance();
   await gh.removeRunner();
 }
-async function defaults(){
+
+async function defaults() {
   core.warning("Runner is falling to default github runner");
   const runner_count=config.input.runnerCount;
   core.info(`RunnerCount ${runner_count}`);
@@ -37,8 +38,6 @@ async function defaults(){
   core.info(`setting output label:${ec2RunnerHostName} `)
   core.setOutput('label', labels);
   core.setOutput('ec2-instance-ids', ec2RunnerHostName);
-
-
 }
 
 (async function () {
