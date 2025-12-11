@@ -63,7 +63,7 @@ function buildUserDataScript_multiRunner(githubRegistrationToken, baseLabel, run
       `  cp -r "${config.input.runnerHomeDir}/." "$RUN_DIR/"`,
       '  RUNNER_NAME="$(hostname)-runner-$i"',
       // create a distinct label per runner (append index)
-      `  LABEL="${baseLabel},${baseLabel}-${i}"`,
+      `  LABEL="${baseLabel},${baseLabel}-$i"`,
       `  ./config.sh --url https://github.com/${config.githubContext.owner}/${config.githubContext.repo} --token ${githubRegistrationToken} --labels "$LABEL" --name "$RUNNER_NAME" --replace --unattended`,
       '  sudo ./svc.sh install',
       '  sudo ./svc.sh start',
@@ -95,7 +95,7 @@ function buildUserDataScript_multiRunner(githubRegistrationToken, baseLabel, run
     '  export RUNNER_ALLOW_RUNASROOT=1',
     '  RUNNER_NAME="$(hostname)-runner-$i"',
     // create a distinct label per runner (append index)
-    `  LABEL="${baseLabel},${baseLabel}-${i}"`,
+    `  LABEL="${baseLabel},${baseLabel}-$i"`,
     `  ./config.sh --url https://github.com/${config.githubContext.owner}/${config.githubContext.repo} --token ${githubRegistrationToken} --labels "$LABEL" --name "$RUNNER_NAME" --unattended --replace`,
     '  sudo ./svc.sh install',
     '  sudo ./svc.sh start',
