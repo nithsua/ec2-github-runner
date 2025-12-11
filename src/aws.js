@@ -166,11 +166,10 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
   const labels = [];
 
   const ec2 = new AWS.EC2();
-  const runnersPerInstance = parseInt(config.input.runnersPerInstance || '' , 1);
 
   // CASE 1: single EC2 instance that hosts multiple runners
   if (singleInstance) {
-    core.info(`Single-instance mode enabled → launching 1 EC2 instance with ${runnersPerInstance} runners.`);
+    core.info(`Single-instance mode enabled → launching 1 EC2 instance with ${maxConfigRunners} runners.`);
 
     // generate a BASE label for the whole instance
     const baseLabel = config.generateRandomString(12);
@@ -179,7 +178,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
     const userData = buildUserDataScript_multiRunner(
       githubRegistrationToken,
       baseLabel,
-      runnersPerInstance
+      maxConfigRunners
     );
 
     const params = {
@@ -199,11 +198,11 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
     const result = await ec2.runInstances(params).promise();
     const ec2InstanceId = result.Instances[0].InstanceId;
 
-    core.info(`Launched EC2 instance ${ec2InstanceId} with ${runnersPerInstance} runners.`);
+    core.info(`Launched EC2 instance ${ec2InstanceId} with ${maxConfigRunners} runners.`);
 
     // compute all labels (baseLabel-1, baseLabel-2, ...)
     const instanceLabels = [];
-    for (let r = 1; r <= runnersPerInstance; r++) {
+    for (let r = 1; r <= maxConfigRunners; r++) {
       instanceLabels.push(`${baseLabel}-${r}`);
       labels.push(`${baseLabel}-${r}`);
     }
