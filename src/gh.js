@@ -49,6 +49,7 @@ async function getRunners(label,isDeleteFlow) {
 
 // get GitHub Registration Token for registering a self-hosted runner
 async function getRegistrationToken() {
+  core.info("[DEBUG] Entering getRegistrationToken");
   const octokit = github.getOctokit(config.input.githubToken);
 
   try {

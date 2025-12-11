@@ -161,11 +161,13 @@ class ec2InstaceIdWithLabel{
 }
 
 async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRegistrationToken, singleInstance = false) {
+  core.info(`[DEBUG] Entering startEc2withUniqueLabelForEachInstance. maxConfigRunners=${maxConfigRunners}, singleInstance=${singleInstance}`);
   const ec2InstanceIds = [];
   const ec2InstanceIdWithLabels = [];
   const labels = [];
 
   const ec2 = new AWS.EC2();
+  core.info("[DEBUG] EC2 client created.");
 
   // CASE 1: single EC2 instance that hosts multiple runners
   if (singleInstance) {
@@ -173,6 +175,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
 
     // generate a BASE label for the whole instance
     const baseLabel = config.generateRandomString(12);
+    core.info(`[DEBUG] Generated baseLabel: ${baseLabel}`);
 
     // build multi-runner user-data
     const userData = buildUserDataScript_multiRunner(
@@ -180,6 +183,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
       baseLabel,
       maxConfigRunners
     );
+    core.info(`[DEBUG] User data script built.`);
 
     const params = {
       ImageId: config.input.ec2ImageId,

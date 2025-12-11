@@ -90041,11 +90041,14 @@ class ec2InstaceIdWithLabel{
 }
 
 async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRegistrationToken, singleInstance = false) {
+  core.info(`[DEBUG] Entering startEc2withUniqueLabelForEachInstance. maxConfigRunners=${maxConfigRunners}, singleInstance=${singleInstance}`);
   const ec2InstanceIds = [];
   const ec2InstanceIdWithLabels = [];
   const labels = [];
 
   const ec2 = new AWS.EC2();
+  core.info("[DEBUG] EC2 client created.");
+
 
   // CASE 1: single EC2 instance that hosts multiple runners
   if (singleInstance) {
@@ -90053,6 +90056,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
 
     // generate a BASE label for the whole instance
     const baseLabel = config.generateRandomString(12);
+    core.info(`[DEBUG] Generated baseLabel: ${baseLabel}`);
 
     // build multi-runner user-data
     const userData = buildUserDataScript_multiRunner(
@@ -90060,6 +90064,7 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
       baseLabel,
       maxConfigRunners
     );
+    core.info(`[DEBUG] User data script built.`);
 
     const params = {
       ImageId: config.input.ec2ImageId,
@@ -90345,6 +90350,7 @@ async function getRunners(label,isDeleteFlow) {
 
 // get GitHub Registration Token for registering a self-hosted runner
 async function getRegistrationToken() {
+  core.info("[DEBUG] Entering getRegistrationToken");
   const octokit = github.getOctokit(config.input.githubToken);
 
   try {
@@ -99556,15 +99562,21 @@ function setOutput(label, ec2InstanceIds) {
 async function start() {
   core.info("RocketLaneStage")
   //const label = config.generateUniqueLabel();
+  core.info("Getting registration token...");
   const githubRegistrationToken = await gh.getRegistrationToken();
+  core.info("Got registration token.");
   //const ec2InstanceIds = await aws.startEc2Instance(label, githubRegistrationToken);
+  core.info("Starting EC2 instance(s)...");
   const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken, config.input.singleInstance);
-  core.info(`ec2InstaceId labels:-${ec2InstaceIdWithLabels}`);
-  core.info(`labels created :- ${labels}`)
-  core.info(`ec2Intances created :-${ec2InstacesIds}`);
+  core.info(`ec2InstaceId labels:-${JSON.stringify(ec2InstaceIdWithLabels)}`);
+  core.info(`labels created :- ${JSON.stringify(labels)}`)
+  core.info(`ec2Intances created :-${JSON.stringify(ec2InstacesIds)}`);
   setOutput(labels, ec2InstacesIds);
+  core.info("Waiting for instance running...");
   await aws.waitForInstanceRunning(ec2InstacesIds);
+  core.info("Waiting for runners registered...");
   await gh.waitForRunnersRegistered(labels);
+  core.info("Done.");
 }
 
 async function stop() {

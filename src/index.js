@@ -12,15 +12,21 @@ function setOutput(label, ec2InstanceIds) {
 async function start() {
   core.info("RocketLaneStage")
   //const label = config.generateUniqueLabel();
+  core.info("Getting registration token...");
   const githubRegistrationToken = await gh.getRegistrationToken();
+  core.info("Got registration token.");
   //const ec2InstanceIds = await aws.startEc2Instance(label, githubRegistrationToken);
+  core.info("Starting EC2 instance(s)...");
   const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken, config.input.singleInstance);
-  core.info(`ec2InstaceId labels:-${ec2InstaceIdWithLabels}`);
-  core.info(`labels created :- ${labels}`)
-  core.info(`ec2Intances created :-${ec2InstacesIds}`);
+  core.info(`ec2InstaceId labels:-${JSON.stringify(ec2InstaceIdWithLabels)}`);
+  core.info(`labels created :- ${JSON.stringify(labels)}`)
+  core.info(`ec2Intances created :-${JSON.stringify(ec2InstacesIds)}`);
   setOutput(labels, ec2InstacesIds);
+  core.info("Waiting for instance running...");
   await aws.waitForInstanceRunning(ec2InstacesIds);
+  core.info("Waiting for runners registered...");
   await gh.waitForRunnersRegistered(labels);
+  core.info("Done.");
 }
 
 async function stop() {
