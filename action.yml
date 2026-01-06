@@ -76,14 +76,31 @@ inputs:
     default: "self-hosted"
   runner-count:
     description: >-
-      ECS instance count, defaults to 1
+      Number of runners to create, defaults to 1
     required: false
     default: '1'
-  single-instance:
+  runner-mode:
     description: >-
-      If true, a single EC2 instance will be launched with multiple runners. If false, each runner will be launched on a separate EC2 instance.
+      Runner allocation mode:
+        - 'single' - One runner per EC2 instance (default)
+        - 'multi' - Multiple runners on a single EC2 instance
+        - 'fleet' - Mixed instance types based on ranges (one runner per instance)
     required: false
-    default: 'false'
+    default: 'single'
+  instance-type-ranges:
+    description: >-
+      JSON array of 1-based starting indices for each instance type tier.
+      Used only with runner-mode: fleet.
+      Example: '[1, 5, 19]' means tier 1 starts at runner 1, tier 2 at runner 5, tier 3 at runner 19.
+    required: false
+    default: '[]'
+  instance-types:
+    description: >-
+      JSON array of EC2 instance types corresponding to each range.
+      Used only with runner-mode: fleet.
+      Example: '["c7a.8xlarge", "m5a.large", "m6a.2xlarge"]'
+    required: false
+    default: '[]'
   runner-home-dir:
     description: >-
       Directory that contains actions-runner software and scripts. E.g. /home/runner/actions-runner.

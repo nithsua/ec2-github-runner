@@ -17,7 +17,7 @@ async function start() {
   core.info("Got registration token.");
   //const ec2InstanceIds = await aws.startEc2Instance(label, githubRegistrationToken);
   core.info("Starting EC2 instance(s)...");
-  const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken, config.input.singleInstance);
+  const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken);
   core.info(`ec2InstaceId labels:-${JSON.stringify(ec2InstaceIdWithLabels)}`);
   core.info(`labels created :- ${JSON.stringify(labels)}`)
   core.info(`ec2Intances created :-${JSON.stringify(ec2InstacesIds)}`);

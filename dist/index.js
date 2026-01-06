@@ -90102,68 +90102,29 @@ class ec2InstaceIdWithLabel{
   }
 }
 
-async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRegistrationToken, singleInstance = false) {
-  core.info(`[DEBUG] Entering startEc2withUniqueLabelForEachInstance. maxConfigRunners=${maxConfigRunners}, singleInstance=${singleInstance}`);
+async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRegistrationToken) {
+  const runnerMode = config.input.runnerMode;
+  core.info(`[DEBUG] Entering startEc2withUniqueLabelForEachInstance. maxConfigRunners=${maxConfigRunners}, runnerMode=${runnerMode}`);
+
+  switch (runnerMode) {
+    case 'multi':
+      return await launchMultiRunnerInstance(maxConfigRunners, githubRegistrationToken);
+    case 'fleet':
+      return await launchFleetInstances(maxConfigRunners, githubRegistrationToken);
+    case 'single':
+    default:
+      return await launchSingleRunnerInstances(maxConfigRunners, githubRegistrationToken);
+  }
+}
+
+// Mode: single - One runner per EC2 instance (all same instance type)
+async function launchSingleRunnerInstances(maxConfigRunners, githubRegistrationToken) {
   const ec2InstanceIds = [];
   const ec2InstanceIdWithLabels = [];
   const labels = [];
-
   const ec2 = new AWS.EC2();
-  core.info("[DEBUG] EC2 client created.");
 
-  // CASE 1: single EC2 instance that hosts multiple runners
-  if (singleInstance) {
-    core.info(`Single-instance mode enabled → launching 1 EC2 instance with ${maxConfigRunners} runners.`);
-
-    // generate a BASE label for the whole instance
-    const baseLabel = config.generateRandomString(60);
-    core.info(`[DEBUG] Generated baseLabel: ${baseLabel}`);
-
-    // build multi-runner user-data
-    const userData = buildUserDataScript_multiRunner(
-      githubRegistrationToken,
-      baseLabel,
-      maxConfigRunners
-    );
-    core.info(`[DEBUG] User data script built.`);
-
-    const params = {
-      ImageId: config.input.ec2ImageId,
-      InstanceType: config.input.ec2InstanceType,
-      MinCount: 1,
-      MaxCount: 1,
-      UserData: Buffer.from(userData.join('\n')).toString('base64'),
-      SubnetId: config.input.subnetId,
-      SecurityGroupIds: [config.input.securityGroupId],
-      IamInstanceProfile: { Name: config.input.iamRoleName },
-      TagSpecifications: config.tagSpecifications,
-      KeyName: config.awsKeyPair,
-      InstanceMarketOptions: buildMarketOptions()
-    };
-
-    const result = await ec2.runInstances(params).promise();
-    const ec2InstanceId = result.Instances[0].InstanceId;
-
-    core.info(`Launched EC2 instance ${ec2InstanceId} with ${maxConfigRunners} runners.`);
-
-    // compute all labels (baseLabel-1, baseLabel-2, ...)
-    const instanceLabels = [];
-    for (let r = 1; r <= maxConfigRunners; r++) {
-      instanceLabels.push(`${baseLabel}-${r}`);
-      labels.push(`${baseLabel}-${r}`);
-    }
-
-    ec2InstanceIds.push(ec2InstanceId);
-    ec2InstanceIdWithLabels.push({
-      instanceId: ec2InstanceId,
-      labels: instanceLabels
-    });
-
-    return [ec2InstanceIdWithLabels, ec2InstanceIds, labels];
-  }
-
-  // CASE 2: multi-instance mode → existing normal behaviour
-  core.info(`Multi-instance mode → launching ${maxConfigRunners} instances (1 runner each)`);
+  core.info(`Single-runner mode → launching ${maxConfigRunners} instances (1 runner each)`);
 
   for (let i = 0; i < maxConfigRunners; i++) {
     const labelForThisInstance = config.generateRandomString(60);
@@ -90194,6 +90155,120 @@ async function startEc2withUniqueLabelForEachInstance(maxConfigRunners, githubRe
       labels: [labelForThisInstance]
     });
     labels.push(labelForThisInstance);
+  }
+
+  return [ec2InstanceIdWithLabels, ec2InstanceIds, labels];
+}
+
+// Mode: multi - Multiple runners on a single EC2 instance
+async function launchMultiRunnerInstance(maxConfigRunners, githubRegistrationToken) {
+  const ec2InstanceIds = [];
+  const ec2InstanceIdWithLabels = [];
+  const labels = [];
+  const ec2 = new AWS.EC2();
+
+  core.info(`Multi-runner mode → launching 1 EC2 instance with ${maxConfigRunners} runners.`);
+
+  const baseLabel = config.generateRandomString(60);
+  core.info(`[DEBUG] Generated baseLabel: ${baseLabel}`);
+
+  const userData = buildUserDataScript_multiRunner(
+    githubRegistrationToken,
+    baseLabel,
+    maxConfigRunners
+  );
+  core.info(`[DEBUG] User data script built.`);
+
+  const params = {
+    ImageId: config.input.ec2ImageId,
+    InstanceType: config.input.ec2InstanceType,
+    MinCount: 1,
+    MaxCount: 1,
+    UserData: Buffer.from(userData.join('\n')).toString('base64'),
+    SubnetId: config.input.subnetId,
+    SecurityGroupIds: [config.input.securityGroupId],
+    IamInstanceProfile: { Name: config.input.iamRoleName },
+    TagSpecifications: config.tagSpecifications,
+    KeyName: config.awsKeyPair,
+    InstanceMarketOptions: buildMarketOptions()
+  };
+
+  const result = await ec2.runInstances(params).promise();
+  const ec2InstanceId = result.Instances[0].InstanceId;
+
+  core.info(`Launched EC2 instance ${ec2InstanceId} with ${maxConfigRunners} runners.`);
+
+  const instanceLabels = [];
+  for (let r = 1; r <= maxConfigRunners; r++) {
+    instanceLabels.push(`${baseLabel}-${r}`);
+    labels.push(`${baseLabel}-${r}`);
+  }
+
+  ec2InstanceIds.push(ec2InstanceId);
+  ec2InstanceIdWithLabels.push({
+    instanceId: ec2InstanceId,
+    labels: instanceLabels
+  });
+
+  return [ec2InstanceIdWithLabels, ec2InstanceIds, labels];
+}
+
+// Mode: fleet - Mixed instance types based on ranges (one runner per instance)
+async function launchFleetInstances(maxConfigRunners, githubRegistrationToken) {
+  const ranges = config.input.instanceTypeRanges;
+  const types = config.input.instanceTypes;
+
+  const ec2InstanceIds = [];
+  const ec2InstanceIdWithLabels = [];
+  const labels = [];
+  const ec2 = new AWS.EC2();
+
+  // Calculate how many runners per tier
+  const tiers = [];
+  for (let i = 0; i < ranges.length; i++) {
+    const start = ranges[i];
+    const end = (i + 1 < ranges.length) ? ranges[i + 1] - 1 : maxConfigRunners;
+    tiers.push({
+      instanceType: types[i],
+      startRunner: start,
+      endRunner: end,
+      count: end - start + 1
+    });
+  }
+
+  core.info(`Fleet mode: ${JSON.stringify(tiers)}`);
+
+  // Launch instances for each tier
+  for (const tier of tiers) {
+    core.info(`Launching ${tier.count} instances of type ${tier.instanceType} for runners ${tier.startRunner}-${tier.endRunner}`);
+    
+    for (let r = tier.startRunner; r <= tier.endRunner; r++) {
+      const label = config.generateRandomString(60);
+      const userData = buildUserDataScript(githubRegistrationToken, label);
+
+      const params = {
+        ImageId: config.input.ec2ImageId,
+        InstanceType: tier.instanceType,  // Use tier-specific instance type
+        MinCount: 1,
+        MaxCount: 1,
+        UserData: Buffer.from(userData.join('\n')).toString('base64'),
+        SubnetId: config.input.subnetId,
+        SecurityGroupIds: [config.input.securityGroupId],
+        IamInstanceProfile: { Name: config.input.iamRoleName },
+        TagSpecifications: config.tagSpecifications,
+        KeyName: config.awsKeyPair,
+        InstanceMarketOptions: buildMarketOptions()
+      };
+
+      const result = await ec2.runInstances(params).promise();
+      const ec2InstanceId = result.Instances[0].InstanceId;
+
+      core.info(`Started ${tier.instanceType} instance ${ec2InstanceId} for runner ${r} with label ${label}`);
+
+      ec2InstanceIds.push(ec2InstanceId);
+      ec2InstanceIdWithLabels.push({ instanceId: ec2InstanceId, labels: [label] });
+      labels.push(label);
+    }
   }
 
   return [ec2InstanceIdWithLabels, ec2InstanceIds, labels];
@@ -90266,8 +90341,10 @@ class Config {
       iamRoleName: core.getInput('iam-role-name'),
       runnerHomeDir: core.getInput('runner-home-dir'),
       preRunnerScript: core.getInput('pre-runner-script'),
-      singleInstance: core.getInput('single-instance') === 'true',
       runnerCount: parseInt(core.getInput('runner-count')),
+      runnerMode: core.getInput('runner-mode') || 'single',
+      instanceTypeRanges: JSON.parse(core.getInput('instance-type-ranges') || '[]'),
+      instanceTypes: JSON.parse(core.getInput('instance-types') || '[]'),
       marketType: core.getInput('market-type'),
     };
     this.awsKeyPair=core.getInput('key-pair');
@@ -90317,20 +90394,71 @@ class Config {
     }
 
     if (this.input.mode === 'start') {
-      if (!this.input.ec2ImageId || !this.input.ec2InstanceType || !this.input.subnetId || !this.input.securityGroupId) {
+      // For fleet mode, ec2InstanceType is not required (comes from instance-types)
+      const requiresInstanceType = this.input.runnerMode !== 'fleet';
+      if (!this.input.ec2ImageId || !this.input.subnetId || !this.input.securityGroupId) {
         throw new Error(`Not all the required inputs are provided for the 'start' mode`);
+      }
+      if (requiresInstanceType && !this.input.ec2InstanceType) {
+        throw new Error(`ec2-instance-type is required for runner-mode '${this.input.runnerMode}'`);
       }
     } else if (this.input.mode === 'stop') {
       if (!this.input.label || !this.input.ec2InstanceIds) {
         throw new Error(`Not all the required inputs are provided for the 'stop' mode`);
       }
-    }else if(this.input.mode === 'default'){
+    } else if (this.input.mode === 'default') {
+      // No additional validation needed
+    } else {
+      throw new Error('Wrong mode. Allowed values: start, stop, default.');
+    }
 
+    // Validate runner-mode
+    const validRunnerModes = ['single', 'multi', 'fleet'];
+    if (!validRunnerModes.includes(this.input.runnerMode)) {
+      throw new Error(`Invalid 'runner-mode' input: '${this.input.runnerMode}'. Allowed values: ${validRunnerModes.join(', ')}`);
     }
-    else {
-      throw new Error('Wrong mode. Allowed values: start, stop.');
+
+    // Validate fleet mode inputs
+    if (this.input.runnerMode === 'fleet') {
+      const ranges = this.input.instanceTypeRanges;
+      const types = this.input.instanceTypes;
+
+      // Arrays must have same length
+      if (ranges.length !== types.length) {
+        throw new Error(`instance-type-ranges (${ranges.length} items) and instance-types (${types.length} items) must have the same length`);
+      }
+
+      // At least one tier required
+      if (ranges.length === 0) {
+        throw new Error("fleet mode requires at least one tier in instance-type-ranges and instance-types");
+      }
+
+      // First range must start at 1
+      if (ranges[0] !== 1) {
+        throw new Error(`instance-type-ranges must start at 1, but got ${ranges[0]}`);
+      }
+
+      // Ranges must be strictly increasing
+      for (let i = 1; i < ranges.length; i++) {
+        if (ranges[i] <= ranges[i - 1]) {
+          throw new Error(`instance-type-ranges must be strictly increasing. Found ${ranges[i]} after ${ranges[i - 1]} at index ${i}`);
+        }
+      }
+
+      // Last range start must be <= runner count
+      if (ranges[ranges.length - 1] > this.input.runnerCount) {
+        throw new Error(`Last range start (${ranges[ranges.length - 1]}) exceeds runner-count (${this.input.runnerCount})`);
+      }
+
+      // All instance types must be non-empty strings
+      for (let i = 0; i < types.length; i++) {
+        if (typeof types[i] !== 'string' || types[i].trim() === '') {
+          throw new Error(`instance-types[${i}] must be a non-empty string`);
+        }
+      }
     }
-    if (this.marketType?.length > 0 && this.input.marketType !== 'spot') {
+
+    if (this.input.marketType?.length > 0 && this.input.marketType !== 'spot') {
       throw new Error(`Invalid 'market-type' input. Allowed values: spot.`);
     }
 
@@ -99621,7 +99749,7 @@ async function start() {
   core.info("Got registration token.");
   //const ec2InstanceIds = await aws.startEc2Instance(label, githubRegistrationToken);
   core.info("Starting EC2 instance(s)...");
-  const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken, config.input.singleInstance);
+  const [ec2InstaceIdWithLabels,ec2InstacesIds,labels]=await aws.startEc2withUniqueLabelForEachInstance(config.input.runnerCount,githubRegistrationToken);
   core.info(`ec2InstaceId labels:-${JSON.stringify(ec2InstaceIdWithLabels)}`);
   core.info(`labels created :- ${JSON.stringify(labels)}`)
   core.info(`ec2Intances created :-${JSON.stringify(ec2InstacesIds)}`);

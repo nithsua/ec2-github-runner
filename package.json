@@ -17,13 +17,18 @@
     "package": "ncc build ./src/index.js"
   },
   "dependencies": {
-    "@actions/core": "^1.10.0",
+    "@actions/core": "^1.11.1",
     "@actions/github": "^4.0.0",
     "aws-sdk": "^2.1250.0",
     "lodash": "^4.17.21"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@vercel/ncc": "^0.38.4",
     "dotenv": "^8.6.0",
-    "eslint": "^7.32.0"
+    "eslint": "^7.32.0",
+    "rollup": "^4.53.3"
   }
 }

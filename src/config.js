@@ -18,8 +18,10 @@ class Config {
       iamRoleName: core.getInput('iam-role-name'),
       runnerHomeDir: core.getInput('runner-home-dir'),
       preRunnerScript: core.getInput('pre-runner-script'),
-      singleInstance: core.getInput('single-instance') === 'true',
       runnerCount: parseInt(core.getInput('runner-count')),
+      runnerMode: core.getInput('runner-mode') || 'single',
+      instanceTypeRanges: JSON.parse(core.getInput('instance-type-ranges') || '[]'),
+      instanceTypes: JSON.parse(core.getInput('instance-types') || '[]'),
       marketType: core.getInput('market-type'),
     };
     this.awsKeyPair=core.getInput('key-pair');
@@ -69,20 +71,71 @@ class Config {
     }
 
     if (this.input.mode === 'start') {
-      if (!this.input.ec2ImageId || !this.input.ec2InstanceType || !this.input.subnetId || !this.input.securityGroupId) {
+      // For fleet mode, ec2InstanceType is not required (comes from instance-types)
+      const requiresInstanceType = this.input.runnerMode !== 'fleet';
+      if (!this.input.ec2ImageId || !this.input.subnetId || !this.input.securityGroupId) {
         throw new Error(`Not all the required inputs are provided for the 'start' mode`);
+      }
+      if (requiresInstanceType && !this.input.ec2InstanceType) {
+        throw new Error(`ec2-instance-type is required for runner-mode '${this.input.runnerMode}'`);
       }
     } else if (this.input.mode === 'stop') {
       if (!this.input.label || !this.input.ec2InstanceIds) {
         throw new Error(`Not all the required inputs are provided for the 'stop' mode`);
       }
-    }else if(this.input.mode === 'default'){
+    } else if (this.input.mode === 'default') {
+      // No additional validation needed
+    } else {
+      throw new Error('Wrong mode. Allowed values: start, stop, default.');
+    }
 
+    // Validate runner-mode
+    const validRunnerModes = ['single', 'multi', 'fleet'];
+    if (!validRunnerModes.includes(this.input.runnerMode)) {
+      throw new Error(`Invalid 'runner-mode' input: '${this.input.runnerMode}'. Allowed values: ${validRunnerModes.join(', ')}`);
     }
-    else {
-      throw new Error('Wrong mode. Allowed values: start, stop.');
+
+    // Validate fleet mode inputs
+    if (this.input.runnerMode === 'fleet') {
+      const ranges = this.input.instanceTypeRanges;
+      const types = this.input.instanceTypes;
+
+      // Arrays must have same length
+      if (ranges.length !== types.length) {
+        throw new Error(`instance-type-ranges (${ranges.length} items) and instance-types (${types.length} items) must have the same length`);
+      }
+
+      // At least one tier required
+      if (ranges.length === 0) {
+        throw new Error("fleet mode requires at least one tier in instance-type-ranges and instance-types");
+      }
+
+      // First range must start at 1
+      if (ranges[0] !== 1) {
+        throw new Error(`instance-type-ranges must start at 1, but got ${ranges[0]}`);
+      }
+
+      // Ranges must be strictly increasing
+      for (let i = 1; i < ranges.length; i++) {
+        if (ranges[i] <= ranges[i - 1]) {
+          throw new Error(`instance-type-ranges must be strictly increasing. Found ${ranges[i]} after ${ranges[i - 1]} at index ${i}`);
+        }
+      }
+
+      // Last range start must be <= runner count
+      if (ranges[ranges.length - 1] > this.input.runnerCount) {
+        throw new Error(`Last range start (${ranges[ranges.length - 1]}) exceeds runner-count (${this.input.runnerCount})`);
+      }
+
+      // All instance types must be non-empty strings
+      for (let i = 0; i < types.length; i++) {
+        if (typeof types[i] !== 'string' || types[i].trim() === '') {
+          throw new Error(`instance-types[${i}] must be a non-empty string`);
+        }
+      }
     }
-    if (this.marketType?.length > 0 && this.input.marketType !== 'spot') {
+
+    if (this.input.marketType?.length > 0 && this.input.marketType !== 'spot') {
       throw new Error(`Invalid 'market-type' input. Allowed values: spot.`);
     }
 
